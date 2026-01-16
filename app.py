@@ -61,28 +61,31 @@ def process_kmz(path):
         if name_el is None or coord_el is None:
             continue
 
+        # ----- Declared length from name -----
         declared = None
         match = re.search(r'(\d+)\s*m$', name_el.text)
         if match:
             declared = int(match.group(1))
 
+        # ----- Extract coordinates -----
         coords = []
         for c in coord_el.text.strip().split():
             lon, lat, *_ = map(float, c.split(","))
-easting, northing = transformer.transform(lon, lat)
+            easting, northing = transformer.transform(lon, lat)
 
-coords.append({
-    "lat": lat,
-    "lon": lon,
-    "easting": round(easting, 3),
-    "northing": round(northing, 3)
-})
+            coords.append({
+                "lat": lat,
+                "lon": lon,
+                "easting": round(easting, 3),
+                "northing": round(northing, 3)
+            })
 
         if len(coords) < 2:
             continue
 
+        # ----- Calculate true length -----
         latlon = [[c["lat"], c["lon"]] for c in coords]
-calculated = calculate_true_length(latlon)
+        calculated = calculate_true_length(latlon)
 
         diff = None
         diff_pct = None
@@ -98,7 +101,8 @@ calculated = calculate_true_length(latlon)
             "difference_pct": diff_pct
         })
 
-        all_coords.append(coords)
+        # For map display (Leaflet needs lat/lon)
+        all_coords.append(latlon)
 
     return results, all_coords
 
@@ -182,6 +186,7 @@ def export(fmt):
 # ---------- START APP (Render compatible) ----------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
 
 
 
