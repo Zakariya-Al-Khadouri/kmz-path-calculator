@@ -9,6 +9,8 @@ function upload() {
 
   for (let f of files) fd.append("files", f);
 
+fd.append("project", document.getElementById("project").value);
+  
   fetch("/upload", { method: "POST", body: fd })
     .then(r => r.json())
     .then(data => {
@@ -59,3 +61,4 @@ function exportFile(fmt) {
     a.click();
   });
 }
+
