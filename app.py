@@ -7,6 +7,7 @@ import os
 import uuid
 import pandas as pd
 from math import radians, sin, cos, sqrt, asin
+from pyproj import Transformer
 
 app = Flask(__name__)
 app.secret_key = "kmz_super_secret_2026"
@@ -20,6 +21,9 @@ PROJECTS_DIR = "projects"
 os.makedirs(PROJECTS_DIR, exist_ok=True)
 
 NS = {"kml": "http://www.opengis.net/kml/2.2"}
+
+transformer = Transformer.from_crs("EPSG:4326", "EPSG:2936", always_xy=True)
+
 
 # ---------- Distance Calculation ----------
 def haversine(p1, p2):
@@ -65,12 +69,20 @@ def process_kmz(path):
         coords = []
         for c in coord_el.text.strip().split():
             lon, lat, *_ = map(float, c.split(","))
-            coords.append([lat, lon])
+easting, northing = transformer.transform(lon, lat)
+
+coords.append({
+    "lat": lat,
+    "lon": lon,
+    "easting": round(easting, 3),
+    "northing": round(northing, 3)
+})
 
         if len(coords) < 2:
             continue
 
-        calculated = calculate_true_length(coords)
+        latlon = [[c["lat"], c["lon"]] for c in coords]
+calculated = calculate_true_length(latlon)
 
         diff = None
         diff_pct = None
@@ -170,5 +182,6 @@ def export(fmt):
 # ---------- START APP (Render compatible) ----------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
 
 
