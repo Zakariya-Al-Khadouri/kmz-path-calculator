@@ -12,8 +12,12 @@ app = Flask(__name__)
 app.secret_key = "kmz_super_secret_2026"
 USERNAME = "admin"
 PASSWORD = "kmz123"
+
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+PROJECTS_DIR = "projects"
+os.makedirs(PROJECTS_DIR, exist_ok=True)
 
 NS = {"kml": "http://www.opengis.net/kml/2.2"}
 
@@ -117,9 +121,13 @@ def upload():
     all_results = []
     all_coords = []
 
-    for file in request.files.getlist("files"):
+    project = request.form["project"]
+project_path = os.path.join(PROJECTS_DIR, project)
+os.makedirs(project_path, exist_ok=True)
+
+for file in request.files.getlist("files"):
         filename = f"{uuid.uuid4()}.kmz"
-        path = os.path.join(UPLOAD_FOLDER, filename)
+        path = os.path.join(project_path, filename)
         file.save(path)
 
         results, coords = process_kmz(path)
@@ -162,4 +170,5 @@ def export(fmt):
 # ---------- START APP (Render compatible) ----------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
 
