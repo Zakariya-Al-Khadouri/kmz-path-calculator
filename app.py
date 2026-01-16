@@ -107,23 +107,46 @@ def process_kmz(path):
     return results, all_coords
 
 # ---------- Routes ----------
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def index():
-    if not session.get("logged_in"):
-        return redirect("/login")
-    return render_template("index.html")
+    results = []
+    all_coords = []
+    declared_total = 0
+    calculated_total = 0
+    total_paths = 0
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
     if request.method == "POST":
-        if (
-            request.form["username"] == USERNAME
-            and request.form["password"] == PASSWORD
-        ):
-            session["logged_in"] = True
-            return redirect("/")
-        return "Invalid credentials", 401
-    return render_template("login.html")
+        if not session.get("logged_in"):
+            return redirect("/login")
+
+        project = request.form.get("project", "default")
+        os.makedirs(f"uploads/{project}", exist_ok=True)
+
+        uploaded = request.files.getlist("files")
+
+        for file in uploaded:
+            if not file.filename.endswith(".kmz"):
+                continue
+
+            save_path = f"uploads/{project}/{file.filename}"
+            file.save(save_path)
+
+            r, coords = process_kmz(save_path)
+            results.extend(r)
+            all_coords.extend(coords)
+
+        declared_total = sum(r["declared_m"] or 0 for r in results)
+        calculated_total = sum(r["calculated_m"] for r in results)
+        total_paths = len(results)
+
+    return render_template(
+        "index.html",
+        results=results,
+        declared_total=round(declared_total, 2),
+        calculated_total=round(calculated_total, 2),
+        total_paths=total_paths,
+        coords=all_coords
+    )
 
 
 @app.route("/logout")
@@ -186,6 +209,7 @@ def export(fmt):
 # ---------- START APP (Render compatible) ----------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
 
 
 
