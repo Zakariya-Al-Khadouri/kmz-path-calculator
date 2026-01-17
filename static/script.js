@@ -1,44 +1,61 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>KMZ Path Calculator</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-</head>
-<body>
-  
-<div style="display:flex;align-items:center">
-  <img src="/static/norconsult.png" height="200">
-  <h2 style="margin-left:10px">SONIC PROJECT</h2>
-</div>
-  
-<h2>KMZ Path Length Calculator</h2>
+let map = L.map('map').setView([23.6, 58.5], 7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-<input type="file" id="fileInput" multiple accept=".kmz">
-<button onclick="upload()">Process</button>
-<button onclick="exportFile('csv')">Export CSV</button>
-<button onclick="exportFile('xlsx')">Export Excel</button>
+let resultData = [];
 
-<pre id="summary"></pre>
+function upload() {
+  const files = document.getElementById("fileInput").files;
+  let fd = new FormData();
 
-<table id="table">
-  <tr>
-    <th>Name</th>
-    <th>Declared (m)</th>
-    <th>Calculated (m)</th>
-    <th>Diff (m)</th>
-    <th>Diff (%)</th>
-  </tr>
-</table>
+  for (let f of files) fd.append("files", f);
 
-<div id="map"></div>
+  fetch("/upload", { method: "POST", body: fd })
+    .then(r => r.json())
+    .then(data => {
+      resultData = data.details;
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="/static/script.js"></script>
-</body>
-</html>
+      document.getElementById("summary").textContent =
+        `Paths: ${data.paths}
+Declared Total: ${data.declared_total} m
+Calculated Total: ${data.calculated_total} m
+Difference: ${data.difference_total} m
 
+${data.equation}`;
 
+      let table = document.getElementById("table");
+      table.innerHTML = `
+      <tr>
+        <th>Name</th><th>Declared</th><th>Calculated</th>
+        <th>Diff</th><th>Diff %</th>
+      </tr>`;
 
+      data.details.forEach(d => {
+        table.innerHTML += `
+        <tr>
+          <td>${d.name}</td>
+          <td>${d.declared_m ?? "-"}</td>
+          <td>${d.calculated_m}</td>
+          <td>${d.difference_m ?? "-"}</td>
+          <td>${d.difference_pct ?? "-"}</td>
+        </tr>`;
+      });
 
+      map.eachLayer(l => l instanceof L.Polyline && map.removeLayer(l));
+      data.coordinates.forEach(line => L.polyline(line).addTo(map));
+    });
+}
 
+function exportFile(fmt) {
+  fetch(`/export/${fmt}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(resultData)
+  })
+  .then(res => res.blob())
+  .then(blob => {
+    let a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `results.${fmt}`;
+    a.click();
+  });
+}
