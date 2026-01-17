@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect
+from flask import Flask, render_template, request, jsonify, send_file
 import zipfile
 import xml.etree.ElementTree as ET
 import re
@@ -6,41 +6,29 @@ import os
 import uuid
 import pandas as pd
 from math import radians, sin, cos, sqrt, asin
-from pyproj import Transformer
 
-# ---------- App Config ----------
 app = Flask(__name__)
-app.secret_key = "kmz_super_secret_2026"
-
-USERNAME = "admin"
-PASSWORD = "kmz123"
-
 UPLOAD_FOLDER = "uploads"
-PROJECTS_DIR = "projects"
-
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PROJECTS_DIR, exist_ok=True)
 
 NS = {"kml": "http://www.opengis.net/kml/2.2"}
-transformer = Transformer.from_crs("EPSG:4326", "EPSG:2936", always_xy=True)
 
 # ---------- Distance Calculation ----------
 def haversine(p1, p2):
-    R = 6371000
+    R = 6371000  # meters
     lat1, lon1 = radians(p1[0]), radians(p1[1])
     lat2, lon2 = radians(p2[0]), radians(p2[1])
 
     dlat = lat2 - lat1
     dlon = lon2 - lon1
 
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
     return 2 * R * asin(sqrt(a))
-
 
 def calculate_true_length(coords):
     total = 0
     for i in range(len(coords) - 1):
-        total += haversine(coords[i], coords[i + 1])
+        total += haversine(coords[i], coords[i+1])
     return round(total, 2)
 
 # ---------- KMZ Processing ----------
@@ -48,7 +36,7 @@ def process_kmz(path):
     results = []
     all_coords = []
 
-    with zipfile.ZipFile(path, "r") as kmz:
+    with zipfile.ZipFile(path, 'r') as kmz:
         kml_file = [f for f in kmz.namelist() if f.endswith(".kml")][0]
         kml_data = kmz.read(kml_file)
 
@@ -62,15 +50,14 @@ def process_kmz(path):
             continue
 
         declared = None
-        match = re.search(r"(\d+)\s*m$", name_el.text)
+        match = re.search(r'(\d+)\s*m$', name_el.text)
         if match:
             declared = int(match.group(1))
 
         coords = []
         for c in coord_el.text.strip().split():
             lon, lat, *_ = map(float, c.split(","))
-            easting, northing = transformer.transform(lon, lat)
-            coords.append({"lat": lat, "lon": lon})
+            coords.append([lat, lon])
 
         if len(coords) < 2:
             continue
@@ -96,58 +83,18 @@ def process_kmz(path):
     return results, all_coords
 
 # ---------- Routes ----------
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    results = []
-    all_coords = []
-    declared_total = 0
-    calculated_total = 0
-    total_paths = 0
-
-    if request.method == "POST":
-        project = request.form.get("project", "default")
-        project_path = os.path.join(UPLOAD_FOLDER, project)
-        os.makedirs(project_path, exist_ok=True)
-
-        for file in request.files.getlist("files"):
-            if not file.filename.endswith(".kmz"):
-                continue
-
-            save_path = os.path.join(project_path, file.filename)
-            file.save(save_path)
-
-            r, coords = process_kmz(save_path)
-            results.extend(r)
-            all_coords.extend(coords)
-
-        declared_total = sum(r["declared_m"] or 0 for r in results)
-        calculated_total = sum(r["calculated_m"] for r in results)
-        total_paths = len(results)
-
-    return render_template(
-        "index.html",
-        results=results,
-        declared_total=declared_total,
-        calculated_total=calculated_total,
-        total_paths=total_paths,
-        coords=all_coords
-    )
+    return render_template("index.html")
 
 @app.route("/upload", methods=["POST"])
 def upload():
     all_results = []
     all_coords = []
 
-    project = request.form.get("project", "default")
-    project_path = os.path.join(PROJECTS_DIR, project)
-    os.makedirs(project_path, exist_ok=True)
-
     for file in request.files.getlist("files"):
-        if not file.filename.endswith(".kmz"):
-            continue
-
         filename = f"{uuid.uuid4()}.kmz"
-        path = os.path.join(project_path, filename)
+        path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(path)
 
         results, coords = process_kmz(path)
@@ -156,17 +103,17 @@ def upload():
 
     declared_total = sum(r["declared_m"] or 0 for r in all_results)
     calculated_total = sum(r["calculated_m"] for r in all_results)
+    diff_total = round(calculated_total - declared_total, 2)
 
     equation = " + ".join(
         str(r["declared_m"]) for r in all_results if r["declared_m"]
-    )
-    equation += f" = {declared_total} m"
+    ) + f" = {declared_total} m"
 
     return jsonify({
         "paths": len(all_results),
         "declared_total": declared_total,
         "calculated_total": round(calculated_total, 2),
-        "difference_total": round(calculated_total - declared_total, 2),
+        "difference_total": diff_total,
         "equation": equation,
         "details": all_results,
         "coordinates": all_coords
@@ -174,8 +121,11 @@ def upload():
 
 @app.route("/export/<fmt>", methods=["POST"])
 def export(fmt):
-    df = pd.DataFrame(request.json)
-    path = os.path.join(UPLOAD_FOLDER, f"results.{fmt}")
+    data = request.json
+    df = pd.DataFrame(data)
+
+    filename = f"results.{fmt}"
+    path = os.path.join(UPLOAD_FOLDER, filename)
 
     if fmt == "csv":
         df.to_csv(path, index=False)
@@ -184,6 +134,6 @@ def export(fmt):
 
     return send_file(path, as_attachment=True)
 
-# ---------- Start App ----------
+# ---------- START APP (Render compatible) ----------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
